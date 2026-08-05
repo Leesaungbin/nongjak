@@ -1,0 +1,87 @@
+name: Build Nongjak AI Windows EXE
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - "nongjak_windows_source.zip"
+      - ".github/workflows/build-windows.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Extract source
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path source | Out-Null
+          Expand-Archive -Path nongjak_windows_source.zip -DestinationPath source -Force
+
+      - name: Install dependencies
+        shell: powershell
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r source/requirements.txt
+          python -m pip install pyinstaller
+
+      - name: Run core tests
+        shell: powershell
+        working-directory: source
+        run: |
+          python tests/test_core.py
+
+      - name: Build Windows application
+        shell: powershell
+        working-directory: source
+        run: |
+          python -m PyInstaller `
+            --noconfirm `
+            --clean `
+            --windowed `
+            --onedir `
+            --name NongjakAI `
+            --collect-all PIL `
+            app.py
+
+      - name: Verify EXE exists
+        shell: powershell
+        working-directory: source
+        run: |
+          if (!(Test-Path "dist/NongjakAI/NongjakAI.exe")) {
+            throw "NongjakAI.exe was not created."
+          }
+          Get-ChildItem -Recurse dist/NongjakAI
+
+      - name: Add Korean usage guide
+        shell: powershell
+        working-directory: source
+        run: |
+          @"
+          농작 AI Windows 실행본
+
+          1. ZIP 파일을 완전히 압축 해제하세요.
+          2. NongjakAI.exe를 더블클릭하세요.
+          3. Python 설치는 필요하지 않습니다.
+          4. Windows 보안 경고가 나오면 추가 정보 > 실행을 선택하세요.
+          "@ | Out-File -FilePath "dist/NongjakAI/실행방법.txt" -Encoding utf8
+
+      - name: Upload Windows EXE package
+        uses: actions/upload-artifact@v4
+        with:
+          name: NongjakAI-Windows
+          path: source/dist/NongjakAI/
+          if-no-files-found: error
+          retention-days: 30
